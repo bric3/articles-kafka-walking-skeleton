@@ -113,7 +113,7 @@ The first thing is to create a topic
 ```bash
 ./bin/kafka-topics.sh --create                                 \
                       --topic bier-bar                         \
-                      --partition 2                            \
+                      --partition 3                            \
                       --replication-factor 1                   \
                       --zookeeper localhost:2181
 ```
@@ -127,4 +127,31 @@ The producer is `io.bric3.articles.programmez.kafka_0_9.Barman` will produce rec
 The consumer is `io.bric3.articles.programmez.kafka_0_9.Barfly` will consume records.
 
 Just run both of them.
+
+You should see the consumer printing beers.
+
+# Regarding the parallelism
+
+Brokers and producers will write in any number of partitions. However there's a direct correlation between the number
+of _partitions_ on a topic and on the number of consumers.
+Each partitions is consumed by exactly one consumer within a group, i.e. there cannot be more consumers in a group
+than partitions.
+
+So let's run a group of 3 barflies `io.bric3.articles.programmez.kafka_0_9.Barflies`. Notice how the consumers are
+balanced on each partitions (first number is partition, second is the offset, third is the consumer id):
+
+```
+2:399:e8bfbf07-d740-458c-8ec8-515e81b115e6 -> Bier bought at '21:12:36.037'
+1:1979:398e6f7f-b6a5-46f4-9f20-2aa027ffa5bd -> Bier bought at '21:12:37.041'
+0:1978:6d5ac918-e2cb-47e6-bf81-b1aa9c9494fc -> Bier bought at '21:12:38.046'
+2:400:e8bfbf07-d740-458c-8ec8-515e81b115e6 -> Bier bought at '21:12:39.047'
+1:1980:398e6f7f-b6a5-46f4-9f20-2aa027ffa5bd -> Bier bought at '21:12:40.052'
+```
+
+If we run our other consumer `io.bric3.articles.programmez.kafka_0_9.Barfly` (that has the same group id), we notice
+that the Barflies _stopped_ one of his consumer. I.e. the other consumer was assigned a partition that was read by
+another consumer. If the `Barfly` consumer stops, then it is assigned back to a Consumer that is available.
+
+
+
 

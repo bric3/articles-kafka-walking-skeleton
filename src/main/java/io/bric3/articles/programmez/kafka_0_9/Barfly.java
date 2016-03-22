@@ -25,7 +25,7 @@ public class Barfly {
             for(int maxPoll = 0; maxPoll<100; maxPoll++) {
                 ConsumerRecords<String, String> records = consumer.poll(1000);
                 for (ConsumerRecord<String, String> record : records) {
-                    System.out.printf("%d: %s%n", record.offset(), record.value());
+                    System.out.printf("%d:%d %s%n", record.partition(), record.offset(), record.value());
                 }
             }
         } finally {
