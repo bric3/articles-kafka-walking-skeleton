@@ -153,5 +153,22 @@ that the Barflies _stopped_ one of his consumer. I.e. the other consumer was ass
 another consumer. If the `Barfly` consumer stops, then it is assigned back to a Consumer that is available.
 
 
+# Command line with `kafkacat`
+
+On the command line, Kafka distribution, comes with command line shell scripts, however they rely on launching
+the JVM, while there's nothing wrong with it (considering the scope of these tools).
+It would be more interesting to use a tool written with another language.
+
+That would be [`kafkacat`](https://github.com/edenhill/kafkacat), it is a command line producer or consumer
+written in C that uses the [`librdkafka`](https://github.com/edenhill/librdkafka).
+
+For example using `kafkacat` as a consumer would be as simple as that.
+
+Note however that the message that can be consumed, are simple strings.
+
+```bash
+kafkacat -b localhost:9092 -t bier-bar -f '%p:%o -> %s\n' -C
+```
+
 
 
