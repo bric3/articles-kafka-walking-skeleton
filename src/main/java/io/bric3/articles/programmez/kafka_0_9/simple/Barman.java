@@ -1,4 +1,4 @@
-package io.bric3.articles.programmez.kafka_0_9;
+package io.bric3.articles.programmez.kafka_0_9.simple;
 
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.SECONDS;

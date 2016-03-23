@@ -1,4 +1,4 @@
-package io.bric3.articles.programmez.kafka_0_9;
+package io.bric3.articles.programmez.kafka_0_9.simple;
 
 import static org.apache.kafka.clients.consumer.ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG;
 import static org.apache.kafka.clients.consumer.ConsumerConfig.GROUP_ID_CONFIG;
