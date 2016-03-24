@@ -89,7 +89,6 @@ and are about identifying the Kafka broker instance as number `1`.
 
 ```
 broker.id=1
-port=9092
 logs.dirs=/tmp/kafka-logs-1
 zookeeper.connect=localhost:2181
 ```
@@ -170,5 +169,251 @@ Note however that the message that can be consumed, are simple strings.
 kafkacat -b localhost:9092 -t bier-bar -f '%p:%o -> %s\n' -C
 ```
 
+
+# Re-balancing a server
+
+Add the new Kafka server, first copy the actual `server.properties`, to another file say `server2.properties`, keep
+in mind the broker 1 is still running.
+
+```bash
+cp config/server.properties config/server2.properties
+```
+
+We'll give this new server the id `2`, and modify some properties such as the port and the logs.
+
+```
+broker.id=2
+listeners=PLAINTEXT://:9093
+logs.dirs=/tmp/kafka-logs-2
+zookeeper.connect=localhost:2181
+```
+
+Then start the broker :
+
+```bash
+./bin/kafka-server-start.sh ./config/server.properties
+```
+
+Create a list of topics you want to move.
+
+```json
+{
+  "topics": [
+    {
+      "topic": "bier-bar"
+    }
+  ],
+  "version": 1
+}
+```
+
+_Don't list consumer offset topics, those are technical topics._
+
+
+Then pass this json file to the `kafka-reassign-partitions.sh`
+
+```bash
+./bin/kafka-reassign-partitions.sh --zookeeper localhost:2181                              \
+                                   --topics-to-move-json-file topics-to-move.json          \
+                                   --broker-list 1,2                                       \
+                                   --generate
+```
+
+That should list the current distribution of partitions and replicas on current brokers, then the output should be
+followed by a list of suggested locations for partitions on both brokers. The result of this command would output
+something like :
+
+**Current partition replica assignment**
+
+```json
+{
+  "version": 1,
+  "partitions": [
+    {
+      "topic": "bier-bar",
+      "partition": 0,
+      "replicas": [
+        1
+      ]
+    },
+    {
+      "topic": "bier-bar",
+      "partition": 2,
+      "replicas": [
+        1
+      ]
+    },
+    {
+      "topic": "bier-bar",
+      "partition": 1,
+      "replicas": [
+        1
+      ]
+    }
+  ]
+}
+```
+
+**Proposed partition reassignment configuration**
+
+```json
+{
+  "version": 1,
+  "partitions": [
+    {
+      "topic": "bier-bar",
+      "partition": 0,
+      "replicas": [
+        1
+      ]
+    },
+    {
+      "topic": "bier-bar",
+      "partition": 2,
+      "replicas": [
+        1
+      ]
+    },
+    {
+      "topic": "bier-bar",
+      "partition": 1,
+      "replicas": [
+        2
+      ]
+    }
+  ]
+}
+```
+
+Notice that some partitions are assigned to broker `2`. Here the tool proposes to assign partition `1` of
+topic `bier-bar` to broker `2`.
+
+If relevant or you want to play with reassignment then edit the json. Then save the proposed json document to
+a file, say `expand-cluster-reassignment.json`.
+
+```bash
+./bin/kafka-reassign-partitions.sh --zookeeper localhost:2181                                     \
+                                   --reassignment-json-file expand-cluster-reassignment.json      \
+                                   --execute
+```
+
+Then watch the Kafka servers do the reassignment.
+
+Broker 1
+
+```
+[2016-03-24 14:15:44,581] INFO [ReplicaFetcherManager on broker 1] Removed fetcher for partitions [bier-bar,1] (kafka.server.ReplicaFetcherManager)
+[2016-03-24 14:15:44,847] INFO Partition [bier-bar,1] on broker 1: Expanding ISR for partition [bier-bar,1] from 1 to 1,2 (kafka.cluster.Partition)
+[2016-03-24 14:15:44,876] INFO [ReplicaFetcherManager on broker 1] Removed fetcher for partitions [bier-bar,1] (kafka.server.ReplicaFetcherManager)
+[2016-03-24 14:15:44,878] INFO No more partitions need to be reassigned. Deleting zk path /admin/reassign_partitions (kafka.utils.ZkUtils)
+[2016-03-24 14:15:44,881] INFO [ReplicaFetcherManager on broker 1] Removed fetcher for partitions [bier-bar,1] (kafka.server.ReplicaFetcherManager)
+[2016-03-24 14:15:44,904] INFO Deleting index /tmp/kafka-logs-1/bier-bar-1/00000000000000000000.index (kafka.log.OffsetIndex)
+[2016-03-24 14:15:44,905] INFO Deleted log for partition [bier-bar,1] in /tmp/kafka-logs-1/bier-bar-1. (kafka.log.LogManager)
+```
+
+Broker 2
+
+```
+[2016-03-24 14:15:44,705] INFO Completed load of log bier-bar-1 with log end offset 0 (kafka.log.Log)
+[2016-03-24 14:15:44,727] INFO Created log for partition [bier-bar,1] in /tmp/kafka-logs-2 with properties {compression.type -> producer, file.delete.delay.ms -> 60000, max.message.bytes -> 1000012, min.insync.replicas -> 1, segment.jitter.ms -> 0, preallocate -> false, min.cleanable.dirty.ratio -> 0.5, index.interval.bytes -> 4096, unclean.leader.election.enable -> true, retention.bytes -> -1, delete.retention.ms -> 86400000, cleanup.policy -> delete, flush.ms -> 9223372036854775807, segment.ms -> 604800000, segment.bytes -> 1073741824, retention.ms -> 604800000, segment.index.bytes -> 10485760, flush.messages -> 9223372036854775807}. (kafka.log.LogManager)
+[2016-03-24 14:15:44,728] INFO Partition [bier-bar,1] on broker 2: No checkpointed highwatermark is found for partition [bier-bar,1] (kafka.cluster.Partition)
+[2016-03-24 14:15:44,735] INFO [ReplicaFetcherManager on broker 2] Removed fetcher for partitions [bier-bar,1] (kafka.server.ReplicaFetcherManager)
+[2016-03-24 14:15:44,739] INFO Truncating log bier-bar-1 to offset 0. (kafka.log.Log)
+[2016-03-24 14:15:44,781] INFO [ReplicaFetcherThread-0-1], Starting  (kafka.server.ReplicaFetcherThread)
+[2016-03-24 14:15:44,788] INFO [ReplicaFetcherManager on broker 2] Added fetcher for partitions List([[bier-bar,1], initOffset 0 to broker BrokerEndPoint(1,10.1.101.177,9092)] ) (kafka.server.ReplicaFetcherManager)
+[2016-03-24 14:15:44,863] INFO [ReplicaFetcherManager on broker 2] Removed fetcher for partitions [bier-bar,1] (kafka.server.ReplicaFetcherManager)
+[2016-03-24 14:15:44,871] INFO [ReplicaFetcherThread-0-1], Shutting down (kafka.server.ReplicaFetcherThread)
+[2016-03-24 14:15:45,353] INFO [ReplicaFetcherThread-0-1], Shutdown completed (kafka.server.ReplicaFetcherThread)
+[2016-03-24 14:15:45,353] INFO [ReplicaFetcherThread-0-1], Stopped  (kafka.server.ReplicaFetcherThread)
+[2016-03-24 14:15:45,358] INFO [ReplicaFetcherManager on broker 2] Removed fetcher for partitions [bier-bar,1] (kafka.server.ReplicaFetcherManager)
+```
+
+In order to verify the partition reassignment let's check several commands. First with the `verify` :
+
+```bash
+./bin/kafka-reassign-partitions.sh --zookeeper localhost:2181                                     \
+                                   --reassignment-json-file expand-cluster-reassignment.json      \
+                                   --verify
+```
+
+The output should be :
+
+```
+Status of partition reassignment:
+Reassignment of partition [bier-bar,0] completed successfully
+Reassignment of partition [bier-bar,2] completed successfully
+Reassignment of partition [bier-bar,1] completed successfully
+```
+
+But the output don't show the brokers, `kafka-topics.sh --describe` :
+
+```bash
+./bin/kafka-topics.sh --zookeeper localhost:2181           \
+                      --topic bier-bar                     \
+                      --describe
+```
+
+
+
+```bash
+Topic:bier-bar  PartitionCount:3        ReplicationFactor:1     Configs:
+        Topic: bier-bar	Partition: 0    Leader: 1       Replicas: 1     Isr: 1
+        Topic: bier-bar	Partition: 1    Leader: 2       Replicas: 2     Isr: 2
+        Topic: bier-bar	Partition: 2    Leader: 1       Replicas: 1     Isr: 1
+```
+
+Notice that the leader for partition `1` is indeed located on the broker `2`. _As the current topic configuration
+does not have multiple replicas the partition is uniquely assigned on broker `2`_
+
+
+That should be it both producer and consumer should be aware of the new Kafka broker once the partitions
+have been reassigned. Remember they have been running the whole time the server 2 has been added to the cluster.
+
+For the `kafkacat` consumer :
+
+```bash
+lsof -p `pgrep kafkacat` -P -n
+```
+
+For the java apps both the producer and the consumer are now aware of the cluster topology change.
+
+**Producer**
+
+```bash
+lsof -p <producer pid> -P -n
+```
+
+```
+...
+java    43437 brice   58u    IPv6 0x934ff95cde1037e3       0t0      TCP 10.1.101.177:61096->10.1.101.177:9093 (ESTABLISHED)
+java    43437 brice   59u    unix 0x934ff95cd408a023       0t0          ->(none)
+java    43437 brice   60u    IPv6 0x934ff95ce6d61cc3       0t0      TCP 10.1.101.177:58484->10.1.101.177:9092 (ESTABLISHED)
+```
+
+**Consumer**
+
+```bash
+lsof -p <consumer pid> -P -n
+```
+
+
+```
+...
+java    43549 brice   71u    IPv6 0x934ff95cdd540cc3       0t0      TCP 10.1.101.177:60201->10.1.101.177:9093 (ESTABLISHED)
+java    43549 brice   72u    IPv6 0x934ff95cdd544d43       0t0      TCP 10.1.101.177:60200->10.1.101.177:9093 (ESTABLISHED)
+java    43549 brice   73u    IPv6 0x934ff95cdd5452a3       0t0      TCP 10.1.101.177:60202->10.1.101.177:9093 (ESTABLISHED)
+java    43549 brice   74u    unix 0x934ff95ce4d194d3       0t0          ->(none)
+java    43549 brice   75u    IPv6 0x934ff95cdc3ee223       0t0      TCP 10.1.101.177:60740->10.1.101.177:9092 (ESTABLISHED)
+java    43549 brice   76u    IPv6 0x934ff95cdc3ef7a3       0t0      TCP 10.1.101.177:60741->10.1.101.177:9092 (ESTABLISHED)
+java    43549 brice   77u    IPv6 0x934ff95cdc3f07c3       0t0      TCP 10.1.101.177:60742->10.1.101.177:9092 (ESTABLISHED)
+java    43549 brice   78u    IPv6 0x934ff95cdc3f1283       0t0      TCP 10.1.101.177:58552->10.1.101.177:9092 (ESTABLISHED)
+java    43549 brice   79u    IPv6 0x934ff95cdc3f17e3       0t0      TCP 10.1.101.177:58553->10.1.101.177:9092 (ESTABLISHED)
+java    43549 brice   80u    IPv6 0x934ff95cdc3edcc3       0t0      TCP 10.1.101.177:58551->10.1.101.177:9092 (ESTABLISHED)
+```
+
+Notice on the consumer there's several connections 1 connection per partition per consumer thread :
+
+* `3 consumers x 2 partitions (0 and 2) = 6` to broker `1` (listening on port `9092`)
+* `3 consumers x 1 partion (1) = 3` to broker `2` (listening on port `9093`)
 
 

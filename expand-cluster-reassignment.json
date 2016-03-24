@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "partitions": [
+    {
+      "topic": "bier-bar",
+      "partition": 0,
+      "replicas": [
+        1
+      ]
+    },
+    {
+      "topic": "bier-bar",
+      "partition": 2,
+      "replicas": [
+        1
+      ]
+    },
+    {
+      "topic": "bier-bar",
+      "partition": 1,
+      "replicas": [
+        2
+      ]
+    }
+  ]
+}
